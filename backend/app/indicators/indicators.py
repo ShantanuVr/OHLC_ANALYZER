@@ -283,6 +283,9 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
     confirmed_hl_index: Optional[int] = None
     confirmed_lh: Optional[float] = None
     confirmed_lh_index: Optional[int] = None
+    # Track last confirmed HH/LL for MSS lookback
+    last_confirmed_hh_index: Optional[int] = None
+    last_confirmed_ll_index: Optional[int] = None
     
     # Determine initial trend from warmup period
     # Look at the first warmup_period candles to determine initial trend
@@ -340,6 +343,7 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
                 # Mark the previous temp_hh as a confirmed HH (at its index)
                 if temp_hh_index < i:
                     confirmed_hh_arr[temp_hh_index] = True
+                    last_confirmed_hh_index = temp_hh_index
                 
                 # Calculate Confirmed HL on-demand: lowest low between temp_hh_index and current
                 lookback_start = max(0, temp_hh_index)
@@ -372,13 +376,32 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
             if confirmed_hl is not None and current_close < confirmed_hl:
                 mss_bearish_arr[i] = True
                 
+                # The LL becomes confirmed (the low that was broken - current low)
+                # Mark LL at current index since we're breaking below confirmed HL
+                confirmed_ll_arr[i] = True
+                last_confirmed_ll_index = i
+                
+                # Find the highest high between the last confirmed HL and the HH that was broken
+                # This HIGH from the HH & HL swing becomes the new Lower High (LH)
+                if confirmed_hl_index is not None and last_confirmed_hh_index is not None:
+                    # Lookback from the HH that was broken to the last confirmed HL
+                    # We want the highest high in this range
+                    lookback_start = max(0, confirmed_hl_index)
+                    lookback_end = min(last_confirmed_hh_index + 1, i)
+                    if lookback_end > lookback_start:
+                        lookback_highs = high[lookback_start:lookback_end]
+                        if len(lookback_highs) > 0:
+                            new_confirmed_lh = lookback_highs.max()
+                            new_confirmed_lh_index = lookback_start + int(np.argmax(lookback_highs))
+                            # Mark LH at the actual pivot index
+                            confirmed_lh_arr_bool[new_confirmed_lh_index] = True
+                            confirmed_lh = new_confirmed_lh
+                            confirmed_lh_index = new_confirmed_lh_index
+                
                 # Flip to downtrend
                 current_trend = 'downtrend'
                 temp_ll = current_low
                 temp_ll_index = i
-                # The current high becomes potential LH reference
-                confirmed_lh = current_high
-                confirmed_lh_index = i
                 confirmed_hl = None
                 confirmed_hl_index = None
         
@@ -397,6 +420,7 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
                 # Mark the previous temp_ll as a confirmed LL (at its index)
                 if temp_ll_index < i:
                     confirmed_ll_arr[temp_ll_index] = True
+                    last_confirmed_ll_index = temp_ll_index
                 
                 # Calculate Confirmed LH on-demand: highest high between temp_ll_index and current
                 lookback_start = max(0, temp_ll_index)
@@ -429,13 +453,32 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
             if confirmed_lh is not None and current_close > confirmed_lh:
                 mss_bullish_arr[i] = True
                 
+                # The HH becomes confirmed (the high that was broken - current high)
+                # Mark HH at current index since we're breaking above confirmed LH
+                confirmed_hh_arr[i] = True
+                last_confirmed_hh_index = i
+                
+                # Find the lowest low between the last confirmed LH and the LL that was broken
+                # This LOW from the LH & LL swing becomes the new Higher Low (HL)
+                if confirmed_lh_index is not None and last_confirmed_ll_index is not None:
+                    # Lookback from the LL that was broken to the last confirmed LH
+                    # We want the lowest low in this range
+                    lookback_start = max(0, confirmed_lh_index)
+                    lookback_end = min(last_confirmed_ll_index + 1, i)
+                    if lookback_end > lookback_start:
+                        lookback_lows = low[lookback_start:lookback_end]
+                        if len(lookback_lows) > 0:
+                            new_confirmed_hl = lookback_lows.min()
+                            new_confirmed_hl_index = lookback_start + int(np.argmin(lookback_lows))
+                            # Mark HL at the actual pivot index
+                            confirmed_hl_arr_bool[new_confirmed_hl_index] = True
+                            confirmed_hl = new_confirmed_hl
+                            confirmed_hl_index = new_confirmed_hl_index
+                
                 # Flip to uptrend
                 current_trend = 'uptrend'
                 temp_hh = current_high
                 temp_hh_index = i
-                # The current low becomes potential HL reference
-                confirmed_hl = current_low
-                confirmed_hl_index = i
                 confirmed_lh = None
                 confirmed_lh_index = None
         

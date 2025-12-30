@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useBacktestStore } from '@/store/useBacktestStore';
 import TradingChart from '@/components/Chart/TradingChart';
 import StrategyBuilder from '@/components/StrategyBuilder/StrategyBuilder';
@@ -7,6 +8,47 @@ import ResultsTable from '@/components/Results/ResultsTable';
 
 export default function Home() {
   const { error, indicatorData } = useBacktestStore();
+  const [chartHeight, setChartHeight] = useState(60); // Percentage of available height
+  const [isResizing, setIsResizing] = useState(false);
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback(() => {
+    setIsResizing(true);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing || !mainRef.current) return;
+
+      const rect = mainRef.current.getBoundingClientRect();
+      const newHeight = ((e.clientY - rect.top) / rect.height) * 100;
+      
+      // Constrain between 20% and 80%
+      const constrainedHeight = Math.max(20, Math.min(80, newHeight));
+      setChartHeight(constrainedHeight);
+    },
+    [isResizing]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+    }
+  }, [isResizing, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -56,14 +98,33 @@ export default function Home() {
         </aside>
 
         {/* Main Area */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden">
           {/* Chart */}
-          <div className="flex-1 min-h-0">
+          <div 
+            className="min-h-0 border-t border-zinc-800 bg-[#050507]"
+            style={{ height: `${chartHeight}%` }}
+          >
             <TradingChart />
           </div>
           
+          {/* Resizer Handle */}
+          <div
+            onMouseDown={handleMouseDown}
+            className={`h-1 bg-zinc-800 hover:bg-zinc-700 cursor-row-resize transition-colors ${
+              isResizing ? 'bg-gold-500/50' : ''
+            }`}
+            style={{ minHeight: '4px' }}
+          >
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="w-12 h-0.5 bg-zinc-600 rounded" />
+            </div>
+          </div>
+          
           {/* Results Panel */}
-          <div className="h-80 flex-shrink-0 border-t border-zinc-800 bg-[#050507]">
+          <div 
+            className="min-h-0 border-t border-zinc-800 bg-[#050507] overflow-auto"
+            style={{ height: `${100 - chartHeight}%` }}
+          >
             <ResultsTable />
           </div>
         </main>
