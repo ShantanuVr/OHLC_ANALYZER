@@ -61,6 +61,7 @@ export default function StrategyBuilder() {
     setActiveTab,
     toggleIndicator,
     resetEntryConditions,
+    setLoadedDateRange,
   } = useBacktestStore();
 
   const [loadingData, setLoadingData] = useState(false);
@@ -69,13 +70,38 @@ export default function StrategyBuilder() {
     setLoadingData(true);
     setError(null);
     try {
+      // If no dates specified, load current year
+      let startDate = params.startDate;
+      let endDate = params.endDate;
+      
+      if (!startDate || !endDate) {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        startDate = `01/01/${currentYear}`;
+        endDate = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${currentYear}`;
+      }
+      
+      // Convert dates to YYYY-MM-DD format for API
+      const formatDateForAPI = (dateStr: string) => {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const [month, day, year] = parts;
+          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        return dateStr; // Already in correct format or invalid
+      };
+      
+      const apiStartDate = formatDateForAPI(startDate);
+      const apiEndDate = formatDateForAPI(endDate);
+      
       const data = await getIndicatorData(
         params.symbol,
         params.timeframe,
-        params.startDate || undefined,
-        params.endDate || undefined
+        apiStartDate,
+        apiEndDate
       );
       setIndicatorData(data);
+      setLoadedDateRange({ start: startDate, end: endDate });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {

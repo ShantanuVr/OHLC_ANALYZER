@@ -74,9 +74,16 @@ interface BacktestState {
     bos: boolean;
   };
   
+  // Lazy loading state
+  loadedDateRange: { start: string; end: string } | null;
+  isLoadingMore: boolean;
+  
   // Actions
   setOHLCVData: (data: OHLCVData[]) => void;
   setIndicatorData: (data: IndicatorData[]) => void;
+  appendIndicatorData: (data: IndicatorData[], prepend?: boolean) => void;
+  setLoadedDateRange: (range: { start: string; end: string } | null) => void;
+  setIsLoadingMore: (loading: boolean) => void;
   setParams: (params: Partial<StrategyParams>) => void;
   setOptimizationParams: (params: Partial<OptimizationParams>) => void;
   setEntryCondition: (key: keyof EntryConditions, value: boolean | string) => void;
@@ -142,18 +149,40 @@ export const useBacktestStore = create<BacktestState>((set) => ({
   error: null,
   activeTab: 'backtest',
   showIndicators: {
-    swings: true,
-    fvg: true,
-    ob: true,
-    sweeps: true,
+    swings: false,
+    fvg: false,
+    ob: false,
+    sweeps: false,
     sessions: false,
-    mss: true,
-    bos: true,
+    mss: false,
+    bos: false,
   },
+  loadedDateRange: null,
+  isLoadingMore: false,
   
   // Actions
   setOHLCVData: (data) => set({ ohlcvData: data }),
-  setIndicatorData: (data) => set({ indicatorData: data }),
+  setIndicatorData: (data) => set({ indicatorData: data, loadedDateRange: null }),
+  appendIndicatorData: (data, prepend = false) =>
+    set((state) => {
+      // Remove duplicates based on time
+      const existingTimes = new Set(state.indicatorData.map(d => d.time));
+      const newData = data.filter(d => !existingTimes.has(d.time));
+      
+      if (prepend) {
+        // Prepend older data (for scrolling to start) - sort by time
+        const combined = [...newData, ...state.indicatorData];
+        combined.sort((a, b) => (a.time as number) - (b.time as number));
+        return { indicatorData: combined };
+      } else {
+        // Append newer data (for scrolling to end) - sort by time
+        const combined = [...state.indicatorData, ...newData];
+        combined.sort((a, b) => (a.time as number) - (b.time as number));
+        return { indicatorData: combined };
+      }
+    }),
+  setLoadedDateRange: (range) => set({ loadedDateRange: range }),
+  setIsLoadingMore: (loading) => set({ isLoadingMore: loading }),
   
   setParams: (newParams) =>
     set((state) => ({

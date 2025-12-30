@@ -10,7 +10,7 @@ import {
   ColorType,
 } from 'lightweight-charts';
 import { useBacktestStore } from '@/store/useBacktestStore';
-import { IndicatorData } from '@/lib/api';
+import { IndicatorData, getIndicatorData } from '@/lib/api';
 
 interface ChartMarker {
   time: Time;
@@ -24,8 +24,18 @@ export default function TradingChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const isLoadingMoreRef = useRef(false);
   
-  const { indicatorData, showIndicators, params } = useBacktestStore();
+  const { 
+    indicatorData, 
+    showIndicators, 
+    params,
+    loadedDateRange,
+    isLoadingMore,
+    appendIndicatorData,
+    setIsLoadingMore,
+    setError,
+  } = useBacktestStore();
 
   const formatDataForChart = useCallback((data: IndicatorData[]): CandlestickData<Time>[] => {
     return data.map(d => ({
@@ -308,6 +318,121 @@ export default function TradingChart() {
     candlestickSeriesRef.current.setMarkers(markers);
   }, [showIndicators, indicatorData, getMarkers]);
 
+  // Lazy loading: Detect scroll to load more data
+  useEffect(() => {
+    if (!chartRef.current || indicatorData.length === 0) return;
+
+    const chart = chartRef.current;
+    const timeScale = chart.timeScale();
+
+    const handleVisibleRangeChange = async () => {
+      if (isLoadingMoreRef.current) return;
+
+      const visibleRange = timeScale.getVisibleRange();
+      if (!visibleRange || indicatorData.length === 0) return;
+
+      // Get the time range of loaded data (Unix timestamps in seconds)
+      const firstTime = indicatorData[0].time as number;
+      const lastTime = indicatorData[indicatorData.length - 1].time as number;
+
+      // Check if scrolled to start (need to load older data)
+      const scrollThreshold = 0.15; // 15% from the start
+      const rangeSize = visibleRange.to - visibleRange.from;
+      const distanceFromStart = visibleRange.from - firstTime;
+
+      if (distanceFromStart < rangeSize * scrollThreshold && distanceFromStart > -rangeSize) {
+        // Load one year before the current start
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        
+        try {
+          const currentStart = new Date(firstTime * 1000);
+          const newStart = new Date(currentStart);
+          newStart.setFullYear(newStart.getFullYear() - 1);
+          
+          const formatDate = (date: Date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+
+          const newData = await getIndicatorData(
+            params.symbol,
+            params.timeframe,
+            formatDate(newStart),
+            formatDate(currentStart)
+          );
+
+          if (newData.length > 0) {
+            // Prepend older data - the store will update indicatorData
+            appendIndicatorData(newData, true);
+            // Chart will auto-update via the useEffect that watches indicatorData
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load more data');
+        } finally {
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }
+        return; // Prevent loading both directions at once
+      }
+
+      // Check if scrolled to end (need to load newer data)
+      const distanceFromEnd = lastTime - visibleRange.to;
+      if (distanceFromEnd < rangeSize * scrollThreshold && distanceFromEnd > -rangeSize) {
+        // Load one year after the current end
+        isLoadingMoreRef.current = true;
+        setIsLoadingMore(true);
+        
+        try {
+          const currentEnd = new Date(lastTime * 1000);
+          const newEnd = new Date(currentEnd);
+          newEnd.setFullYear(newEnd.getFullYear() + 1);
+          
+          const formatDate = (date: Date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+
+          const newData = await getIndicatorData(
+            params.symbol,
+            params.timeframe,
+            formatDate(currentEnd),
+            formatDate(newEnd)
+          );
+
+          if (newData.length > 0) {
+            // Append newer data - the store will update indicatorData
+            appendIndicatorData(newData, false);
+            // Chart will auto-update via the useEffect that watches indicatorData
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load more data');
+        } finally {
+          isLoadingMoreRef.current = false;
+          setIsLoadingMore(false);
+        }
+      }
+    };
+
+    // Use debounce to avoid too many calls
+    let timeoutId: NodeJS.Timeout;
+    const debouncedHandler = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(handleVisibleRangeChange, 300);
+    };
+
+    timeScale.subscribeVisibleTimeRangeChange(debouncedHandler);
+
+    return () => {
+      clearTimeout(timeoutId);
+      timeScale.unsubscribeVisibleTimeRangeChange(debouncedHandler);
+    };
+  }, [indicatorData, params, appendIndicatorData, setIsLoadingMore, setError, formatDataForChart, getMarkers]);
+
   return (
     <div className="chart-container h-full w-full relative">
       {/* Chart header */}
@@ -340,6 +465,14 @@ export default function TradingChart() {
       
       {/* Chart container */}
       <div ref={chartContainerRef} className="w-full h-full" />
+      
+      {/* Loading more data indicator */}
+      {isLoadingMore && (
+        <div className="absolute top-20 right-4 z-20 bg-zinc-800/90 border border-zinc-700 rounded-lg px-4 py-2 flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-gold-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-zinc-300">Loading more data...</span>
+        </div>
+      )}
       
       {/* No data message */}
       {indicatorData.length === 0 && (
