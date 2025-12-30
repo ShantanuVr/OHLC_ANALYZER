@@ -70,6 +70,8 @@ interface BacktestState {
     ob: boolean;
     sweeps: boolean;
     sessions: boolean;
+    mss: boolean;
+    bos: boolean;
   };
   
   // Actions
@@ -145,6 +147,8 @@ export const useBacktestStore = create<BacktestState>((set) => ({
     ob: true,
     sweeps: true,
     sessions: false,
+    mss: true,
+    bos: true,
   },
   
   // Actions

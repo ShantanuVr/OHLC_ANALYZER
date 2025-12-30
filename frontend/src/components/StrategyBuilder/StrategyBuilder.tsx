@@ -290,6 +290,16 @@ export default function StrategyBuilder() {
               label="Liquidity Sweeps"
             />
             <Toggle
+              checked={showIndicators.mss}
+              onChange={() => toggleIndicator('mss')}
+              label="Market Structure Shift (MSS)"
+            />
+            <Toggle
+              checked={showIndicators.bos}
+              onChange={() => toggleIndicator('bos')}
+              label="Break of Structure (BoS)"
+            />
+            <Toggle
               checked={showIndicators.sessions}
               onChange={() => toggleIndicator('sessions')}
               label="Sessions"

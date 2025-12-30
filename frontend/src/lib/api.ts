@@ -32,6 +32,12 @@ export interface IndicatorData extends OHLCVData {
   ob_bottom: number | null;
   sweep_bullish: boolean;
   sweep_bearish: boolean;
+  mss_bullish: boolean;
+  mss_bearish: boolean;
+  bos_bullish: boolean;
+  bos_bearish: boolean;
+  bos_hq_bullish?: boolean;
+  bos_hq_bearish?: boolean;
   session: string;
   [key: string]: unknown;
 }

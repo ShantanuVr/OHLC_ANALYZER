@@ -84,6 +84,54 @@ export default function TradingChart() {
           });
         }
       }
+      
+      // MSS (Market Structure Shift) markers
+      if (showIndicators.mss) {
+        if (d.mss_bullish) {
+          markers.push({
+            time: d.time as Time,
+            position: 'belowBar',
+            color: '#3b82f6',
+            shape: 'arrowUp',
+            text: 'MSS↑',
+          });
+        }
+        if (d.mss_bearish) {
+          markers.push({
+            time: d.time as Time,
+            position: 'aboveBar',
+            color: '#f97316',
+            shape: 'arrowDown',
+            text: 'MSS↓',
+          });
+        }
+      }
+      
+      // BoS (Break of Structure) markers
+      if (showIndicators.bos) {
+        if (d.bos_bullish) {
+          // High-Quality BoS gets a different marker
+          const isHQ = d.bos_hq_bullish === true || d.bos_hq_bullish === 1;
+          markers.push({
+            time: d.time as Time,
+            position: 'belowBar',
+            color: isHQ ? '#10b981' : '#22c55e',
+            shape: 'circle',
+            text: isHQ ? 'BoS+↑' : 'BoS↑',
+          });
+        }
+        if (d.bos_bearish) {
+          // High-Quality BoS gets a different marker
+          const isHQ = d.bos_hq_bearish === true || d.bos_hq_bearish === 1;
+          markers.push({
+            time: d.time as Time,
+            position: 'aboveBar',
+            color: isHQ ? '#ef4444' : '#f87171',
+            shape: 'circle',
+            text: isHQ ? 'BoS+↓' : 'BoS↓',
+          });
+        }
+      }
     });
     
     return markers;
@@ -214,6 +262,12 @@ export default function TradingChart() {
           )}
           {showIndicators.sweeps && (
             <span className="px-2 py-1 rounded bg-orange-900/30 text-orange-400">Sweeps</span>
+          )}
+          {showIndicators.mss && (
+            <span className="px-2 py-1 rounded bg-blue-900/30 text-blue-400">MSS</span>
+          )}
+          {showIndicators.bos && (
+            <span className="px-2 py-1 rounded bg-emerald-900/30 text-emerald-400">BoS</span>
           )}
         </div>
       </div>
