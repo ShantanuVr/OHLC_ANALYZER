@@ -259,6 +259,13 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
     confirmed_lh_arr = np.full(n, np.nan)
     confirmed_hl_idx_arr = np.full(n, np.nan)
     confirmed_lh_idx_arr = np.full(n, np.nan)
+    
+    # Pivot point markers (only True at the actual pivot index)
+    confirmed_hh_arr = np.zeros(n, dtype=bool)  # HH confirmed after BoS
+    confirmed_hl_arr_bool = np.zeros(n, dtype=bool)  # HL at confirmed index
+    confirmed_lh_arr_bool = np.zeros(n, dtype=bool)  # LH at confirmed index
+    confirmed_ll_arr = np.zeros(n, dtype=bool)  # LL confirmed after BoS
+    
     bos_bullish_arr = np.zeros(n, dtype=bool)
     bos_bearish_arr = np.zeros(n, dtype=bool)
     bos_hq_bullish_arr = np.zeros(n, dtype=bool)
@@ -330,12 +337,19 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
             if current_close > prev_temp_hh:
                 bos_bullish_arr[i] = True
                 
+                # Mark the previous temp_hh as a confirmed HH (at its index)
+                if temp_hh_index < i:
+                    confirmed_hh_arr[temp_hh_index] = True
+                
                 # Calculate Confirmed HL on-demand: lowest low between temp_hh_index and current
                 lookback_start = max(0, temp_hh_index)
                 lookback_lows = low[lookback_start:i + 1]
                 if len(lookback_lows) > 0:
                     new_confirmed_hl = lookback_lows.min()
                     new_confirmed_hl_index = lookback_start + int(np.argmin(lookback_lows))
+                    
+                    # Mark HL at the actual pivot index
+                    confirmed_hl_arr_bool[new_confirmed_hl_index] = True
                     
                     # High-Quality BoS: Check if retracement went into Discount Zone (below 50%)
                     if confirmed_hl is not None:
@@ -380,12 +394,19 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
             if current_close < prev_temp_ll:
                 bos_bearish_arr[i] = True
                 
+                # Mark the previous temp_ll as a confirmed LL (at its index)
+                if temp_ll_index < i:
+                    confirmed_ll_arr[temp_ll_index] = True
+                
                 # Calculate Confirmed LH on-demand: highest high between temp_ll_index and current
                 lookback_start = max(0, temp_ll_index)
                 lookback_highs = high[lookback_start:i + 1]
                 if len(lookback_highs) > 0:
                     new_confirmed_lh = lookback_highs.max()
                     new_confirmed_lh_index = lookback_start + int(np.argmax(lookback_highs))
+                    
+                    # Mark LH at the actual pivot index
+                    confirmed_lh_arr_bool[new_confirmed_lh_index] = True
                     
                     # High-Quality BoS: Check if retracement went into Premium Zone (above 50%)
                     if confirmed_lh is not None:
@@ -433,6 +454,13 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
     df['confirmed_lh'] = confirmed_lh_arr
     df['confirmed_hl_idx'] = confirmed_hl_idx_arr
     df['confirmed_lh_idx'] = confirmed_lh_idx_arr
+    
+    # Pivot point markers (only True at actual pivot indices)
+    df['confirmed_hh'] = confirmed_hh_arr  # HH confirmed after BoS
+    df['confirmed_hl_at_idx'] = confirmed_hl_arr_bool  # HL at confirmed pivot index
+    df['confirmed_lh_at_idx'] = confirmed_lh_arr_bool  # LH at confirmed pivot index
+    df['confirmed_ll'] = confirmed_ll_arr  # LL confirmed after BoS
+    
     df['bos_bullish'] = bos_bullish_arr
     df['bos_bearish'] = bos_bearish_arr
     df['bos_hq_bullish'] = bos_hq_bullish_arr

@@ -38,6 +38,10 @@ export interface IndicatorData extends OHLCVData {
   bos_bearish: boolean;
   bos_hq_bullish?: boolean;
   bos_hq_bearish?: boolean;
+  confirmed_hh?: boolean;
+  confirmed_hl_at_idx?: boolean;
+  confirmed_lh_at_idx?: boolean;
+  confirmed_ll?: boolean;
   session: string;
   [key: string]: unknown;
 }

@@ -85,9 +85,56 @@ export default function TradingChart() {
         }
       }
       
-      // MSS (Market Structure Shift) markers
+      // Market Structure Pivots (HH, HL, LH, LL)
+      if (showIndicators.mss || showIndicators.bos) {
+        // Higher High (HH) - confirmed after bullish BoS
+        if (d.confirmed_hh === true || d.confirmed_hh === 1) {
+          markers.push({
+            time: d.time as Time,
+            position: 'aboveBar',
+            color: '#22c55e',
+            shape: 'circle',
+            text: 'HH',
+          });
+        }
+        
+        // Higher Low (HL) - confirmed after bullish BoS
+        if (d.confirmed_hl_at_idx === true || d.confirmed_hl_at_idx === 1) {
+          markers.push({
+            time: d.time as Time,
+            position: 'belowBar',
+            color: '#10b981',
+            shape: 'circle',
+            text: 'HL',
+          });
+        }
+        
+        // Lower High (LH) - confirmed after bearish BoS
+        if (d.confirmed_lh_at_idx === true || d.confirmed_lh_at_idx === 1) {
+          markers.push({
+            time: d.time as Time,
+            position: 'aboveBar',
+            color: '#f87171',
+            shape: 'circle',
+            text: 'LH',
+          });
+        }
+        
+        // Lower Low (LL) - confirmed after bearish BoS
+        if (d.confirmed_ll === true || d.confirmed_ll === 1) {
+          markers.push({
+            time: d.time as Time,
+            position: 'belowBar',
+            color: '#ef4444',
+            shape: 'circle',
+            text: 'LL',
+          });
+        }
+      }
+      
+      // MSS (Market Structure Shift) markers - only when they occur
       if (showIndicators.mss) {
-        if (d.mss_bullish) {
+        if (d.mss_bullish === true || d.mss_bullish === 1) {
           markers.push({
             time: d.time as Time,
             position: 'belowBar',
@@ -96,7 +143,7 @@ export default function TradingChart() {
             text: 'MSS↑',
           });
         }
-        if (d.mss_bearish) {
+        if (d.mss_bearish === true || d.mss_bearish === 1) {
           markers.push({
             time: d.time as Time,
             position: 'aboveBar',
@@ -107,27 +154,27 @@ export default function TradingChart() {
         }
       }
       
-      // BoS (Break of Structure) markers
+      // BoS (Break of Structure) markers - only when they occur
       if (showIndicators.bos) {
-        if (d.bos_bullish) {
+        if (d.bos_bullish === true || d.bos_bullish === 1) {
           // High-Quality BoS gets a different marker
           const isHQ = d.bos_hq_bullish === true || d.bos_hq_bullish === 1;
           markers.push({
             time: d.time as Time,
             position: 'belowBar',
             color: isHQ ? '#10b981' : '#22c55e',
-            shape: 'circle',
+            shape: 'square',
             text: isHQ ? 'BoS+↑' : 'BoS↑',
           });
         }
-        if (d.bos_bearish) {
+        if (d.bos_bearish === true || d.bos_bearish === 1) {
           // High-Quality BoS gets a different marker
           const isHQ = d.bos_hq_bearish === true || d.bos_hq_bearish === 1;
           markers.push({
             time: d.time as Time,
             position: 'aboveBar',
             color: isHQ ? '#ef4444' : '#f87171',
-            shape: 'circle',
+            shape: 'square',
             text: isHQ ? 'BoS+↓' : 'BoS↓',
           });
         }
