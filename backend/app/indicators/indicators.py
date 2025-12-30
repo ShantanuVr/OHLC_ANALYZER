@@ -3,11 +3,14 @@ Smart Money Concepts (SMC) Indicators for OHLCV data.
 
 All functions are fully vectorized using NumPy/Pandas operations.
 No for-loops are used for iteration to ensure speed over 23 years of data.
+
+Exception: add_smc_market_structure() uses sequential processing for accurate
+state machine tracking of MSS/BoS per SMC rules.
 """
 import numpy as np
 import pandas as pd
 from scipy.signal import argrelextrema
-from typing import Tuple
+from typing import Tuple, Optional, List
 
 
 # =============================================================================
@@ -175,6 +178,271 @@ def add_mss_bos(df: pd.DataFrame) -> pd.DataFrame:
         (df['low'].shift(1) >= prev_swing_low.shift(1)) &
         df['in_downtrend'].shift(1)
     )
+    
+    return df
+
+
+def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.DataFrame:
+    """
+    SMC Market Structure Analysis using state machine approach.
+    
+    Implements strict SMC rules:
+    - All breaks use BODY CLOSE only (not wicks)
+    - HL/LH are confirmed RETROACTIVELY after BoS occurs
+    - High-Quality BoS requires retracement into 50% equilibrium zone
+    - Tracks floating Temporary HH/LL with indices for efficient lookback
+    
+    Uptrend Rules:
+    - Temporary HH floats up with price
+    - BoS: Close > Temporary HH → Confirm HL (lowest low since last HH)
+    - MSS: Close < Confirmed HL → Trend flips to downtrend
+    
+    Downtrend Rules:
+    - Temporary LL floats down with price  
+    - BoS: Close < Temporary LL → Confirm LH (highest high since last LL)
+    - MSS: Close > Confirmed LH → Trend flips to uptrend
+    
+    High-Quality BoS (The "+" Rule):
+    - Uptrend: Confirmed HL must be in Discount Zone (below 50% of dealing range)
+    - Downtrend: Confirmed LH must be in Premium Zone (above 50% of dealing range)
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        OHLCV DataFrame with datetime index
+    warmup_period : int
+        Number of candles to skip at start to avoid false signals (default: 50)
+    
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with added columns:
+        - current_trend: 'uptrend' | 'downtrend' | None
+        - temp_hh / temp_ll: Temporary HH/LL prices (floating)
+        - confirmed_hl / confirmed_lh: Confirmed pivot prices
+        - confirmed_hl_idx / confirmed_lh_idx: Indices where pivots were confirmed
+        - bos_bullish / bos_bearish: Break of Structure signals
+        - bos_hq_bullish / bos_hq_bearish: High-Quality BoS signals
+        - mss_bullish / mss_bearish: Market Structure Shift signals
+    """
+    df = df.copy()
+    n = len(df)
+    
+    if n <= warmup_period:
+        # Not enough data, return empty signals
+        df['current_trend'] = None
+        df['temp_hh'] = np.nan
+        df['temp_ll'] = np.nan
+        df['confirmed_hl'] = np.nan
+        df['confirmed_lh'] = np.nan
+        df['confirmed_hl_idx'] = np.nan
+        df['confirmed_lh_idx'] = np.nan
+        df['bos_bullish'] = False
+        df['bos_bearish'] = False
+        df['bos_hq_bullish'] = False
+        df['bos_hq_bearish'] = False
+        df['mss_bullish'] = False
+        df['mss_bearish'] = False
+        return df
+    
+    # Extract numpy arrays for speed
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
+    
+    # Output arrays
+    current_trend_arr = np.empty(n, dtype=object)
+    current_trend_arr[:] = None
+    temp_hh_arr = np.full(n, np.nan)
+    temp_ll_arr = np.full(n, np.nan)
+    confirmed_hl_arr = np.full(n, np.nan)
+    confirmed_lh_arr = np.full(n, np.nan)
+    confirmed_hl_idx_arr = np.full(n, np.nan)
+    confirmed_lh_idx_arr = np.full(n, np.nan)
+    bos_bullish_arr = np.zeros(n, dtype=bool)
+    bos_bearish_arr = np.zeros(n, dtype=bool)
+    bos_hq_bullish_arr = np.zeros(n, dtype=bool)
+    bos_hq_bearish_arr = np.zeros(n, dtype=bool)
+    mss_bullish_arr = np.zeros(n, dtype=bool)
+    mss_bearish_arr = np.zeros(n, dtype=bool)
+    
+    # State variables
+    current_trend: Optional[str] = None
+    temp_hh: float = high[warmup_period]
+    temp_hh_index: int = warmup_period
+    temp_ll: float = low[warmup_period]
+    temp_ll_index: int = warmup_period
+    confirmed_hl: Optional[float] = None
+    confirmed_hl_index: Optional[int] = None
+    confirmed_lh: Optional[float] = None
+    confirmed_lh_index: Optional[int] = None
+    
+    # Determine initial trend from warmup period
+    # Look at the first warmup_period candles to determine initial trend
+    warmup_high = high[:warmup_period].max()
+    warmup_low = low[:warmup_period].min()
+    warmup_high_idx = int(np.argmax(high[:warmup_period]))
+    warmup_low_idx = int(np.argmin(low[:warmup_period]))
+    
+    # If high came after low, we're in uptrend; otherwise downtrend
+    if warmup_high_idx > warmup_low_idx:
+        current_trend = 'uptrend'
+        temp_hh = warmup_high
+        temp_hh_index = warmup_high_idx
+        # Set initial confirmed_hl to the lowest point
+        confirmed_hl = warmup_low
+        confirmed_hl_index = warmup_low_idx
+    else:
+        current_trend = 'downtrend'
+        temp_ll = warmup_low
+        temp_ll_index = warmup_low_idx
+        # Set initial confirmed_lh to the highest point
+        confirmed_lh = warmup_high
+        confirmed_lh_index = warmup_high_idx
+    
+    # Main state machine loop
+    for i in range(warmup_period, n):
+        current_high = high[i]
+        current_low = low[i]
+        current_close = close[i]
+        
+        # Store current state before updates
+        current_trend_arr[i] = current_trend
+        temp_hh_arr[i] = temp_hh
+        temp_ll_arr[i] = temp_ll
+        if confirmed_hl is not None:
+            confirmed_hl_arr[i] = confirmed_hl
+            confirmed_hl_idx_arr[i] = confirmed_hl_index
+        if confirmed_lh is not None:
+            confirmed_lh_arr[i] = confirmed_lh
+            confirmed_lh_idx_arr[i] = confirmed_lh_index
+        
+        if current_trend == 'uptrend':
+            # Update Temporary HH if new high is made
+            if current_high > temp_hh:
+                temp_hh = current_high
+                temp_hh_index = i
+            
+            # Check for BoS: Close > Temporary HH
+            # This uses the PREVIOUS temp_hh before this candle updated it
+            prev_temp_hh = temp_hh_arr[i - 1] if i > 0 and not np.isnan(temp_hh_arr[i - 1]) else temp_hh
+            
+            if current_close > prev_temp_hh:
+                bos_bullish_arr[i] = True
+                
+                # Calculate Confirmed HL on-demand: lowest low between temp_hh_index and current
+                lookback_start = max(0, temp_hh_index)
+                lookback_lows = low[lookback_start:i + 1]
+                if len(lookback_lows) > 0:
+                    new_confirmed_hl = lookback_lows.min()
+                    new_confirmed_hl_index = lookback_start + int(np.argmin(lookback_lows))
+                    
+                    # High-Quality BoS: Check if retracement went into Discount Zone (below 50%)
+                    if confirmed_hl is not None:
+                        dealing_range_top = prev_temp_hh
+                        dealing_range_bottom = confirmed_hl
+                        equilibrium_50 = (dealing_range_bottom + dealing_range_top) / 2
+                        
+                        if new_confirmed_hl < equilibrium_50:
+                            bos_hq_bullish_arr[i] = True
+                    
+                    # Update confirmed HL
+                    confirmed_hl = new_confirmed_hl
+                    confirmed_hl_index = new_confirmed_hl_index
+                
+                # Reset temp_hh to current (new cycle starts)
+                temp_hh = current_high
+                temp_hh_index = i
+            
+            # Check for MSS: Close < Confirmed HL
+            if confirmed_hl is not None and current_close < confirmed_hl:
+                mss_bearish_arr[i] = True
+                
+                # Flip to downtrend
+                current_trend = 'downtrend'
+                temp_ll = current_low
+                temp_ll_index = i
+                # The current high becomes potential LH reference
+                confirmed_lh = current_high
+                confirmed_lh_index = i
+                confirmed_hl = None
+                confirmed_hl_index = None
+        
+        elif current_trend == 'downtrend':
+            # Update Temporary LL if new low is made
+            if current_low < temp_ll:
+                temp_ll = current_low
+                temp_ll_index = i
+            
+            # Check for BoS: Close < Temporary LL
+            prev_temp_ll = temp_ll_arr[i - 1] if i > 0 and not np.isnan(temp_ll_arr[i - 1]) else temp_ll
+            
+            if current_close < prev_temp_ll:
+                bos_bearish_arr[i] = True
+                
+                # Calculate Confirmed LH on-demand: highest high between temp_ll_index and current
+                lookback_start = max(0, temp_ll_index)
+                lookback_highs = high[lookback_start:i + 1]
+                if len(lookback_highs) > 0:
+                    new_confirmed_lh = lookback_highs.max()
+                    new_confirmed_lh_index = lookback_start + int(np.argmax(lookback_highs))
+                    
+                    # High-Quality BoS: Check if retracement went into Premium Zone (above 50%)
+                    if confirmed_lh is not None:
+                        dealing_range_bottom = prev_temp_ll
+                        dealing_range_top = confirmed_lh
+                        equilibrium_50 = (dealing_range_bottom + dealing_range_top) / 2
+                        
+                        if new_confirmed_lh > equilibrium_50:
+                            bos_hq_bearish_arr[i] = True
+                    
+                    # Update confirmed LH
+                    confirmed_lh = new_confirmed_lh
+                    confirmed_lh_index = new_confirmed_lh_index
+                
+                # Reset temp_ll to current (new cycle starts)
+                temp_ll = current_low
+                temp_ll_index = i
+            
+            # Check for MSS: Close > Confirmed LH
+            if confirmed_lh is not None and current_close > confirmed_lh:
+                mss_bullish_arr[i] = True
+                
+                # Flip to uptrend
+                current_trend = 'uptrend'
+                temp_hh = current_high
+                temp_hh_index = i
+                # The current low becomes potential HL reference
+                confirmed_hl = current_low
+                confirmed_hl_index = i
+                confirmed_lh = None
+                confirmed_lh_index = None
+        
+        else:
+            # Neutral state - determine trend from this candle
+            # This shouldn't happen after warmup but handle edge case
+            current_trend = 'uptrend'
+            temp_hh = current_high
+            temp_hh_index = i
+    
+    # Assign results to DataFrame
+    df['current_trend'] = current_trend_arr
+    df['temp_hh'] = temp_hh_arr
+    df['temp_ll'] = temp_ll_arr
+    df['confirmed_hl'] = confirmed_hl_arr
+    df['confirmed_lh'] = confirmed_lh_arr
+    df['confirmed_hl_idx'] = confirmed_hl_idx_arr
+    df['confirmed_lh_idx'] = confirmed_lh_idx_arr
+    df['bos_bullish'] = bos_bullish_arr
+    df['bos_bearish'] = bos_bearish_arr
+    df['bos_hq_bullish'] = bos_hq_bullish_arr
+    df['bos_hq_bearish'] = bos_hq_bearish_arr
+    df['mss_bullish'] = mss_bullish_arr
+    df['mss_bearish'] = mss_bearish_arr
+    
+    # Add derived columns for compatibility with old interface
+    df['in_uptrend'] = df['current_trend'] == 'uptrend'
+    df['in_downtrend'] = df['current_trend'] == 'downtrend'
     
     return df
 
@@ -585,6 +853,8 @@ def add_all_indicators(
     atr_period: int = 14,
     ema_period: int = 200,
     orb_minutes: int = 60,
+    warmup_period: int = 50,
+    use_legacy_market_structure: bool = False,
 ) -> pd.DataFrame:
     """
     Add all SMC indicators to the DataFrame in the correct order.
@@ -594,7 +864,7 @@ def add_all_indicators(
     df : pd.DataFrame
         OHLCV DataFrame with columns: open, high, low, close, volume
     swing_period : int
-        Period for swing detection (default: 5)
+        Period for swing detection (default: 5) - used only in legacy mode
     displacement_multiplier : float
         Multiplier for displacement detection (default: 2.0)
     atr_period : int
@@ -603,6 +873,10 @@ def add_all_indicators(
         EMA period (default: 200)
     orb_minutes : int
         Opening range minutes (default: 60)
+    warmup_period : int
+        Warmup period for SMC market structure (default: 50)
+    use_legacy_market_structure : bool
+        If True, use old swing-based market structure detection (default: False)
     
     Returns
     -------
@@ -617,9 +891,21 @@ def add_all_indicators(
     df = add_ema(df, period=ema_period)
     
     # 2. Market Structure
-    df = add_swing_highs_lows(df, n=swing_period)
-    df = add_market_structure_labels(df)
-    df = add_mss_bos(df)
+    if use_legacy_market_structure:
+        # Legacy: Fixed swing detection with argrelextrema
+        df = add_swing_highs_lows(df, n=swing_period)
+        df = add_market_structure_labels(df)
+        df = add_mss_bos(df)
+    else:
+        # New: SMC state machine with strict rules
+        # - Body close only for breaks
+        # - Retroactive HL/LH confirmation
+        # - High-Quality BoS with 50% equilibrium
+        df = add_smc_market_structure(df, warmup_period=warmup_period)
+        
+        # Add legacy swing columns for compatibility with liquidity sweeps
+        # These are needed for add_liquidity_sweeps which uses last_swing_high/low
+        df = add_swing_highs_lows(df, n=swing_period)
     
     # 3. Smart Money Concepts
     df = add_displacement(df, multiplier=displacement_multiplier)
