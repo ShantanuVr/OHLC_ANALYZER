@@ -98,11 +98,11 @@ export default function Home() {
         </aside>
 
         {/* Main Area */}
-        <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden">
+        <main ref={mainRef} className="flex-1 flex flex-col overflow-hidden relative">
           {/* Chart */}
           <div 
-            className="min-h-0 border-t border-zinc-800 bg-[#050507]"
-            style={{ height: `${chartHeight}%` }}
+            className="min-h-0 border-t border-zinc-800 bg-[#050507] overflow-hidden"
+            style={{ height: `${chartHeight}%`, flexShrink: 0 }}
           >
             <TradingChart />
           </div>
@@ -111,32 +111,35 @@ export default function Home() {
           <div
             onMouseDown={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               handleMouseDown();
             }}
-            className={`bg-zinc-800 hover:bg-zinc-600 active:bg-gold-500/30 cursor-row-resize transition-colors relative select-none ${
+            className={`bg-zinc-800 hover:bg-zinc-600 active:bg-gold-500/30 cursor-row-resize transition-colors relative select-none flex-shrink-0 ${
               isResizing ? 'bg-gold-500/50' : ''
             }`}
             style={{ 
-              height: '12px', 
-              minHeight: '12px',
-              zIndex: 10,
+              height: '16px', 
+              minHeight: '16px',
+              zIndex: 20,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
             }}
             title="Drag to resize chart height"
           >
             <div className="h-full w-full flex items-center justify-center">
-              <div className="w-20 h-1.5 bg-zinc-500 hover:bg-zinc-400 rounded-full transition-colors" />
+              <div className="w-24 h-2 bg-zinc-500 hover:bg-zinc-400 rounded-full transition-colors" />
             </div>
             {/* Visual indicator dots for better visibility */}
-            <div className="absolute inset-0 flex items-center justify-center gap-1.5 pointer-events-none">
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+            <div className="absolute inset-0 flex items-center justify-center gap-2 pointer-events-none">
+              <div className="w-2 h-2 rounded-full bg-zinc-400" />
+              <div className="w-2 h-2 rounded-full bg-zinc-400" />
+              <div className="w-2 h-2 rounded-full bg-zinc-400" />
             </div>
           </div>
           
           {/* Results Panel */}
           <div 
-            className="min-h-0 border-t border-zinc-800 bg-[#050507] overflow-auto"
+            className="min-h-0 border-t border-zinc-800 bg-[#050507] overflow-auto flex-shrink-0"
             style={{ height: `${100 - chartHeight}%` }}
           >
             <ResultsTable />

@@ -39,6 +39,7 @@ export default function TradingChart() {
 
   const getMarkers = useCallback((data: IndicatorData[]): ChartMarker[] => {
     const markers: ChartMarker[] = [];
+    let pivotCount = 0;
     
     data.forEach(d => {
       // Swing markers
@@ -88,8 +89,11 @@ export default function TradingChart() {
       // Market Structure Pivots (HH, HL, LH, LL) - Always show when MSS or BoS is enabled
       if (showIndicators.mss || showIndicators.bos) {
         // Higher High (HH) - confirmed after bullish BoS
-        const isHH = d.confirmed_hh === true || d.confirmed_hh === 1 || d.confirmed_hh === '1' || Number(d.confirmed_hh) === 1;
+        // Handle various data types: boolean, number (0/1), string ('0'/'1')
+        const hhValue = d.confirmed_hh;
+        const isHH = hhValue === true || hhValue === 1 || hhValue === '1' || (typeof hhValue === 'number' && hhValue > 0);
         if (isHH) {
+          pivotCount++;
           markers.push({
             time: d.time as Time,
             position: 'aboveBar',
@@ -100,8 +104,10 @@ export default function TradingChart() {
         }
         
         // Higher Low (HL) - confirmed after bullish BoS
-        const isHL = d.confirmed_hl_at_idx === true || d.confirmed_hl_at_idx === 1 || d.confirmed_hl_at_idx === '1' || Number(d.confirmed_hl_at_idx) === 1;
+        const hlValue = d.confirmed_hl_at_idx;
+        const isHL = hlValue === true || hlValue === 1 || hlValue === '1' || (typeof hlValue === 'number' && hlValue > 0);
         if (isHL) {
+          pivotCount++;
           markers.push({
             time: d.time as Time,
             position: 'belowBar',
@@ -112,8 +118,10 @@ export default function TradingChart() {
         }
         
         // Lower High (LH) - confirmed after bearish BoS
-        const isLH = d.confirmed_lh_at_idx === true || d.confirmed_lh_at_idx === 1 || d.confirmed_lh_at_idx === '1' || Number(d.confirmed_lh_at_idx) === 1;
+        const lhValue = d.confirmed_lh_at_idx;
+        const isLH = lhValue === true || lhValue === 1 || lhValue === '1' || (typeof lhValue === 'number' && lhValue > 0);
         if (isLH) {
+          pivotCount++;
           markers.push({
             time: d.time as Time,
             position: 'aboveBar',
@@ -124,8 +132,10 @@ export default function TradingChart() {
         }
         
         // Lower Low (LL) - confirmed after bearish BoS
-        const isLL = d.confirmed_ll === true || d.confirmed_ll === 1 || d.confirmed_ll === '1' || Number(d.confirmed_ll) === 1;
+        const llValue = d.confirmed_ll;
+        const isLL = llValue === true || llValue === 1 || llValue === '1' || (typeof llValue === 'number' && llValue > 0);
         if (isLL) {
+          pivotCount++;
           markers.push({
             time: d.time as Time,
             position: 'belowBar',
@@ -184,6 +194,11 @@ export default function TradingChart() {
         }
       }
     });
+    
+    // Debug: Log marker counts (remove in production)
+    if (pivotCount > 0) {
+      console.log(`[TradingChart] Created ${pivotCount} pivot markers, ${markers.length} total markers`);
+    }
     
     return markers;
   }, [showIndicators]);
