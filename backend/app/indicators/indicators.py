@@ -328,25 +328,28 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
             confirmed_lh_idx_arr[i] = confirmed_lh_index
         
         if current_trend == 'uptrend':
+            # Store the PREVIOUS temp_hh_index before any updates
+            prev_temp_hh_index = temp_hh_index
+            prev_temp_hh = temp_hh
+            
             # Update Temporary HH if new high is made
             if current_high > temp_hh:
                 temp_hh = current_high
                 temp_hh_index = i
             
-            # Check for BoS: Close > Temporary HH
-            # This uses the PREVIOUS temp_hh before this candle updated it
-            prev_temp_hh = temp_hh_arr[i - 1] if i > 0 and not np.isnan(temp_hh_arr[i - 1]) else temp_hh
-            
+            # Check for BoS: Close > Temporary HH (use PREVIOUS temp_hh before update)
             if current_close > prev_temp_hh:
                 bos_bullish_arr[i] = True
                 
-                # Mark the previous temp_hh as a confirmed HH (at its index)
-                if temp_hh_index < i:
-                    confirmed_hh_arr[temp_hh_index] = True
-                    last_confirmed_hh_index = temp_hh_index
+                # Mark the PREVIOUS temp_hh as a confirmed HH (at its index)
+                # This is the HH that was just broken
+                if prev_temp_hh_index < i:
+                    confirmed_hh_arr[prev_temp_hh_index] = True
+                    last_confirmed_hh_index = prev_temp_hh_index
                 
-                # Calculate Confirmed HL on-demand: lowest low between temp_hh_index and current
-                lookback_start = max(0, temp_hh_index)
+                # Calculate Confirmed HL on-demand: lowest low between PREVIOUS temp_hh_index and current
+                # This is the retracement between the HH that was broken and the BoS candle
+                lookback_start = max(0, prev_temp_hh_index)
                 lookback_lows = low[lookback_start:i + 1]
                 if len(lookback_lows) > 0:
                     new_confirmed_hl = lookback_lows.min()
@@ -381,13 +384,14 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
                 confirmed_ll_arr[i] = True
                 last_confirmed_ll_index = i
                 
-                # Find the highest high between the last confirmed HL and the HH that was broken
+                # Find the highest high between the HH that was broken and the HL
                 # This HIGH from the HH & HL swing becomes the new Lower High (LH)
                 if confirmed_hl_index is not None and last_confirmed_hh_index is not None:
-                    # Lookback from the HH that was broken to the last confirmed HL
-                    # We want the highest high in this range
-                    lookback_start = max(0, confirmed_hl_index)
-                    lookback_end = min(last_confirmed_hh_index + 1, i)
+                    # Lookback from the HH that was broken (last_confirmed_hh_index) 
+                    # to the HL (confirmed_hl_index)
+                    # We want the highest high in this range (the swing between HH and HL)
+                    lookback_start = max(0, last_confirmed_hh_index)
+                    lookback_end = min(confirmed_hl_index + 1, i)
                     if lookback_end > lookback_start:
                         lookback_highs = high[lookback_start:lookback_end]
                         if len(lookback_highs) > 0:
@@ -406,24 +410,28 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
                 confirmed_hl_index = None
         
         elif current_trend == 'downtrend':
+            # Store the PREVIOUS temp_ll_index before any updates
+            prev_temp_ll_index = temp_ll_index
+            prev_temp_ll = temp_ll
+            
             # Update Temporary LL if new low is made
             if current_low < temp_ll:
                 temp_ll = current_low
                 temp_ll_index = i
             
-            # Check for BoS: Close < Temporary LL
-            prev_temp_ll = temp_ll_arr[i - 1] if i > 0 and not np.isnan(temp_ll_arr[i - 1]) else temp_ll
-            
+            # Check for BoS: Close < Temporary LL (use PREVIOUS temp_ll before update)
             if current_close < prev_temp_ll:
                 bos_bearish_arr[i] = True
                 
-                # Mark the previous temp_ll as a confirmed LL (at its index)
-                if temp_ll_index < i:
-                    confirmed_ll_arr[temp_ll_index] = True
-                    last_confirmed_ll_index = temp_ll_index
+                # Mark the PREVIOUS temp_ll as a confirmed LL (at its index)
+                # This is the LL that was just broken
+                if prev_temp_ll_index < i:
+                    confirmed_ll_arr[prev_temp_ll_index] = True
+                    last_confirmed_ll_index = prev_temp_ll_index
                 
-                # Calculate Confirmed LH on-demand: highest high between temp_ll_index and current
-                lookback_start = max(0, temp_ll_index)
+                # Calculate Confirmed LH on-demand: highest high between PREVIOUS temp_ll_index and current
+                # This is the retracement between the LL that was broken and the BoS candle
+                lookback_start = max(0, prev_temp_ll_index)
                 lookback_highs = high[lookback_start:i + 1]
                 if len(lookback_highs) > 0:
                     new_confirmed_lh = lookback_highs.max()
@@ -458,13 +466,14 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
                 confirmed_hh_arr[i] = True
                 last_confirmed_hh_index = i
                 
-                # Find the lowest low between the last confirmed LH and the LL that was broken
+                # Find the lowest low between the LL that was broken and the LH
                 # This LOW from the LH & LL swing becomes the new Higher Low (HL)
                 if confirmed_lh_index is not None and last_confirmed_ll_index is not None:
-                    # Lookback from the LL that was broken to the last confirmed LH
-                    # We want the lowest low in this range
-                    lookback_start = max(0, confirmed_lh_index)
-                    lookback_end = min(last_confirmed_ll_index + 1, i)
+                    # Lookback from the LL that was broken (last_confirmed_ll_index)
+                    # to the LH (confirmed_lh_index)
+                    # We want the lowest low in this range (the swing between LL and LH)
+                    lookback_start = max(0, last_confirmed_ll_index)
+                    lookback_end = min(confirmed_lh_index + 1, i)
                     if lookback_end > lookback_start:
                         lookback_lows = low[lookback_start:lookback_end]
                         if len(lookback_lows) > 0:
