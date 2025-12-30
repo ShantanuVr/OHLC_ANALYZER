@@ -107,16 +107,30 @@ export default function Home() {
             <TradingChart />
           </div>
           
-          {/* Resizer Handle */}
+          {/* Resizer Handle - More visible and functional */}
           <div
-            onMouseDown={handleMouseDown}
-            className={`h-1 bg-zinc-800 hover:bg-zinc-700 cursor-row-resize transition-colors ${
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleMouseDown();
+            }}
+            className={`bg-zinc-800 hover:bg-zinc-600 active:bg-gold-500/30 cursor-row-resize transition-colors relative select-none ${
               isResizing ? 'bg-gold-500/50' : ''
             }`}
-            style={{ minHeight: '4px' }}
+            style={{ 
+              height: '12px', 
+              minHeight: '12px',
+              zIndex: 10,
+            }}
+            title="Drag to resize chart height"
           >
             <div className="h-full w-full flex items-center justify-center">
-              <div className="w-12 h-0.5 bg-zinc-600 rounded" />
+              <div className="w-20 h-1.5 bg-zinc-500 hover:bg-zinc-400 rounded-full transition-colors" />
+            </div>
+            {/* Visual indicator dots for better visibility */}
+            <div className="absolute inset-0 flex items-center justify-center gap-1.5 pointer-events-none">
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
             </div>
           </div>
           
