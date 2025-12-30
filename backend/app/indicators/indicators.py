@@ -455,11 +455,13 @@ def add_smc_market_structure(df: pd.DataFrame, warmup_period: int = 50) -> pd.Da
     df['confirmed_hl_idx'] = confirmed_hl_idx_arr
     df['confirmed_lh_idx'] = confirmed_lh_idx_arr
     
-    # Pivot point markers (only True at actual pivot indices)
-    df['confirmed_hh'] = confirmed_hh_arr  # HH confirmed after BoS
-    df['confirmed_hl_at_idx'] = confirmed_hl_arr_bool  # HL at confirmed pivot index
-    df['confirmed_lh_at_idx'] = confirmed_lh_arr_bool  # LH at confirmed pivot index
-    df['confirmed_ll'] = confirmed_ll_arr  # LL confirmed after BoS
+    # Pivot point markers (only True at actual pivot indices AND when trend matches)
+    # In uptrend: only show HH and HL
+    # In downtrend: only show LH and LL
+    df['confirmed_hh'] = confirmed_hh_arr & (current_trend_arr == 'uptrend')  # HH only in uptrend
+    df['confirmed_hl_at_idx'] = confirmed_hl_arr_bool & (current_trend_arr == 'uptrend')  # HL only in uptrend
+    df['confirmed_lh_at_idx'] = confirmed_lh_arr_bool & (current_trend_arr == 'downtrend')  # LH only in downtrend
+    df['confirmed_ll'] = confirmed_ll_arr & (current_trend_arr == 'downtrend')  # LL only in downtrend
     
     df['bos_bullish'] = bos_bullish_arr
     df['bos_bearish'] = bos_bearish_arr
