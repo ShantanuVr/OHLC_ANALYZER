@@ -56,8 +56,10 @@ def get_parquet_files(
                 continue
             
             # Find parquet files in this month directory
+            # Filter out macOS resource fork files (._*)
             for pq_file in month_dir.glob("*.parquet"):
-                parquet_files.append(pq_file)
+                if not pq_file.name.startswith("._"):
+                    parquet_files.append(pq_file)
     
     return sorted(parquet_files)
 
@@ -101,28 +103,36 @@ def load_ohlcv_data(
         df = pd.read_parquet(pq_file)
         dfs.append(df)
     
-    df = pd.concat(dfs, ignore_index=True)
+    # Concatenate preserving the index (which is already timestamp)
+    df = pd.concat(dfs)
     
-    # Ensure we have a timestamp column and set as index
-    if 'timestamp' not in df.columns:
-        # Try to find a datetime-like column
-        datetime_cols = df.select_dtypes(include=['datetime64']).columns
-        if len(datetime_cols) > 0:
-            df = df.rename(columns={datetime_cols[0]: 'timestamp'})
-        elif 'time' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['time'])
-        elif 'date' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['date'])
+    # If index is already a DatetimeIndex, use it; otherwise look for timestamp column
+    if not isinstance(df.index, pd.DatetimeIndex):
+        # Try to find a timestamp column
+        if 'timestamp' in df.columns:
+            df = df.set_index('timestamp')
         else:
-            raise ValueError("No timestamp column found in parquet files")
+            datetime_cols = df.select_dtypes(include=['datetime64']).columns
+            if len(datetime_cols) > 0:
+                df = df.set_index(datetime_cols[0])
+            elif 'time' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['time'])
+                df = df.set_index('timestamp')
+            elif 'date' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['date'])
+                df = df.set_index('timestamp')
+            else:
+                raise ValueError("No timestamp column found in parquet files")
     
-    # Convert timestamp to datetime if needed
-    if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # Ensure index name is 'timestamp'
+    df.index.name = 'timestamp'
     
-    # Set timestamp as index
-    df = df.set_index('timestamp')
+    # Sort by index
     df = df.sort_index()
+    
+    # Remove timezone info for consistency (convert to UTC then make naive)
+    if df.index.tz is not None:
+        df.index = df.index.tz_convert('UTC').tz_localize(None)
     
     # Standardize column names to lowercase
     df.columns = df.columns.str.lower()

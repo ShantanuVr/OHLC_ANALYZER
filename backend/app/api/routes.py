@@ -1,6 +1,7 @@
 """
 API routes for the OHLC Analyzer.
 """
+import traceback
 from fastapi import APIRouter, HTTPException
 from typing import List
 
@@ -44,7 +45,8 @@ async def get_ohlcv_data(request: OHLCVRequest):
         
         # Convert to list of dicts for JSON response
         df_reset = df.reset_index()
-        df_reset['time'] = df_reset['timestamp'].astype(int) // 10**9  # Unix timestamp
+        # Convert timestamp to Unix seconds
+        df_reset['time'] = (df_reset['timestamp'].astype('int64') // 10**9).astype(int)
         
         return {
             "symbol": request.symbol,
@@ -53,6 +55,7 @@ async def get_ohlcv_data(request: OHLCVRequest):
             "data": df_reset[['time', 'open', 'high', 'low', 'close', 'volume']].to_dict(orient='records')
         }
     except Exception as e:
+        print(f"Error in get_ohlcv_data: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -71,14 +74,19 @@ async def calculate_indicators(request: IndicatorRequest):
         
         # Prepare response with indicator data
         df_reset = df.reset_index()
-        df_reset['time'] = df_reset['timestamp'].astype(int) // 10**9
+        # Convert timestamp to Unix seconds
+        df_reset['time'] = (df_reset['timestamp'].astype('int64') // 10**9).astype(int)
         
         # Convert boolean columns to int for JSON
         bool_cols = df_reset.select_dtypes(include=['bool']).columns
         for col in bool_cols:
             df_reset[col] = df_reset[col].astype(int)
         
-        # Handle NaN values
+        # Handle NaN values and convert date columns
+        for col in df_reset.columns:
+            if df_reset[col].dtype == 'object':
+                # Convert date objects to string
+                df_reset[col] = df_reset[col].astype(str)
         df_reset = df_reset.fillna(0)
         
         return {
@@ -89,6 +97,7 @@ async def calculate_indicators(request: IndicatorRequest):
             "data": df_reset.to_dict(orient='records')
         }
     except Exception as e:
+        print(f"Error in calculate_indicators: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -117,6 +126,7 @@ async def run_backtest(request: BacktestRequest):
         
         return result
     except Exception as e:
+        print(f"Error in run_backtest: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -155,5 +165,6 @@ async def optimize_backtest(request: OptimizationRequest):
             best_by_win_rate=sorted_by_wr[0] if sorted_by_wr else None,
         )
     except Exception as e:
+        print(f"Error in optimize_backtest: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
